@@ -31,7 +31,7 @@ dependencies:
   - openssl=1.1.1t=h7f8727e_0
   - pip=23.0.1=py38h06a4308_0
   - python=3.8.16=h7a1cb2a_3
-  - pytorch-cuda=11.7=h778d358_5
+  # - pytorch-cuda=11.7=h778d358_5
   - readline=8.2=h5eee18b_0
   - setuptools=66.0.0=py38h06a4308_0
   - sqlite=3.41.2=h5eee18b_0
@@ -50,8 +50,8 @@ dependencies:
       - decorator==5.1.1
       - executing==1.2.0
       - fonttools==4.39.4
-      - google-auth==2.18.0
-      - google-auth-oauthlib==1.0.0
+      # - google-auth==2.18.0
+      # - google-auth-oauthlib==1.0.0
       - grpcio==1.54.0
       - idna==3.4
       - importlib-metadata==6.6.0
@@ -97,10 +97,10 @@ dependencies:
       - tensorboard-data-server==0.7.0
       - tensorboardx==2.6
       - threadpoolctl==3.1.0
-      - torch==1.13.1+cu116
-      - torchaudio==0.13.1+cu116
+      # - torch==1.13.1+cu116
+      # - torchaudio==0.13.1+cu116
       - torchnet==0.0.4
-      - torchvision==0.14.1+cu116
+      # - torchvision==0.14.1+cu116
       - tornado==6.3.1
       - tqdm==4.65.0
       - traitlets==5.9.0

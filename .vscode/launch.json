@@ -1,0 +1,76 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "train",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--layers", "50",
+                "--model_type", "res50_ASPP_lorm",
+                "--dataset_path", "dataset/ScribbleSup/VOC2012",
+                "--dataset", "ScribblePseudoDsDc",
+                "--train_path", "pascal_2012_scribble",
+                "--distancemap_s", "distance_map",
+                "--distancemap_c", "distance_pseudo",
+                "--pesudo_path", "bmp_pseudolabel",
+                "--l_seg", "1",
+                "--l_pesudo", "1",
+                "--l_lorm", "1",
+                "--label_smooth", "0.1",
+                "--l_ds", "1",
+                "--l_dc", "1",
+                // "--labelFusion_entropy", "0",
+                "--numclasses", "21",
+                "--workers", "6",
+                "--batchsize", "2",
+                "--lr", "1e-3",
+                "--warmup", "5",
+                "--wdecay", "5e-4",
+                "--momentum", "0.9",
+                "--epochs", "50",
+                "--logdir", "./log/train_r50_deeplabv2"
+            ]
+        },
+        {
+            "name": "evaluate",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/evaluate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--layers", "50",
+                "--dataset_path", "dataset/ScribbleSup/VOC2012",
+                "--dataset", "VOC2012",
+                "--numclasses", "21",
+                "--workers", "2",
+                "--model_type", "res50_lorm",
+                "--shrink_factor", "1",
+                "--checkpoint_path", "log/train_r50_deeplabv2/Sep28_22-15-02_Daemon/model_best.pth",
+                "--save_path", "emlc_r50_deeplabv2"
+            ]
+        },
+        {
+            "name": "export_onnx",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/evaluate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--layers", "50",
+                "--dataset_path", "dataset/ScribbleSup/VOC2012",
+                "--dataset", "VOC2012",
+                "--numclasses", "21",
+                "--workers", "2",
+                "--model_type", "res50_lorm",
+                "--shrink_factor", "1",
+                "--checkpoint_path", "log/train_deeplabv2_r50/last_checkpoint.pth",
+                "--save_path", "emlc_r50_deeplabv2",
+                "--export_onnx",
+                "--onnx_path", "model_res50_lorm.onnx"
+            ]
+        },
+    ]
+}
