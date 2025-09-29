@@ -17,7 +17,7 @@ def get_model(model_type,distributed,args,local_rank,device):
     elif model_type == 'deeplabv3p_lorm':
         model = deeplabV3_lorm.Res_Deeplab(args.numclasses,args.layers)
     elif model_type == 'res50_ASPP_lorm':
-        model = res50_ASPP_lorm.ResNet_CAMATT(args.numclasses,args.layers)
+        model = res50_ASPP_lorm.Res_Deeplab(args.numclasses, args.layers)
     model = model.to(device)
     if distributed:
         model = DistributedDataParallel(model,device_ids=[local_rank])
@@ -66,7 +66,7 @@ def get_dataloader(args,distributed):
     elif args.dataset == 'ScribblePseudoDc':
         train_dataset = dataset.ScribblePseudoDcData(split='train', data_root=args.dataset_path, data_list='train.txt', transform=train_transform, path = args.train_path, path_pesudo=args.pesudo_path,path_distancemapc=args.distancemap_c)
         val_dataset = dataset.SingleLabelData(split='val', data_root=args.dataset_path, data_list='val.txt', transform=val_transform, path = 'SegmentationClassAug')
-    elif args.datset == 'ScribblePseudoDsDc':
+    elif args.dataset == 'ScribblePseudoDsDc':
         train_dataset = dataset.ScribblePseudoDsDcData(split='train', data_root=args.dataset_path, data_list='train.txt', transform=train_transform, path = args.train_path, path_pesudo=args.pesudo_path,path_distancemaps=args.distancemap_s,path_distancemapc=args.distancemap_c)
         val_dataset = dataset.SingleLabelData(split='val', data_root=args.dataset_path, data_list='val.txt', transform=val_transform, path = 'SegmentationClassAug')
 

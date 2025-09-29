@@ -11,7 +11,12 @@ from tqdm import tqdm
 import time
 import cv2,argparse
 
-from models import res50_ASPP_MLP,res50_ASPP_lorm,res50_deeplabV3_lorm
+from models import res50_ASPP_lorm
+
+try:
+    from models import res50_ASPP_MLP, res50_deeplabV3_lorm
+except ImportError:
+    print("Warning: Some model imports failed. Only res50_lorm will be available.")
 
 import basic_function as func
 import dataset
@@ -34,6 +39,8 @@ parser.add_argument('--model_path', default= 'None' ,help='pretrain model path')
 parser.add_argument('--model_type',default='res50_lorm',type=str,help='Model type selection. nonRW|RW|res50_cam|res50_labelFusion')
 parser.add_argument('--checkpoint_path', metavar='CHECKPOINT_PATH', help='path to the checkpoint file',default='log/train_deeplabv2_r50/last_checkpoint.pth')
 parser.add_argument('--save_path', default='eval_results', metavar='SAVE_PATH', help='path to save the visualizations')
+parser.add_argument('--export_onnx', action='store_true', help='export model to ONNX format')
+parser.add_argument('--onnx_path', default='model.onnx', help='path to save ONNX model')
 
 args = parser.parse_args()
 
@@ -50,6 +57,81 @@ cudnn.deterministic = False
 
 if not os.path.exists ( args.save_path ) :
     os.makedirs ( args.save_path )
+
+def export_to_onnx(model, args):
+    """
+    Export PyTorch model to ONNX format
+    """
+    print(f"Exporting model to ONNX: {args.onnx_path}")
+    
+    # Set model to evaluation mode
+    model.eval()
+    
+    # Create dummy input tensor
+    dummy_input = torch.randn(1, 3, 465, 465).cuda()
+    
+    # Export the model
+    try:
+        if args.model_type == 'res50_lorm' or args.model_type == 'res50_deeplabv3_lorm':
+            # Create a wrapper class for models that use forward_eval method
+            class ModelWrapper(torch.nn.Module):
+                def __init__(self, model):
+                    super(ModelWrapper, self).__init__()
+                    self.model = model
+                
+                def forward(self, x):
+                    return self.model.forward_eval(x)
+            
+            wrapped_model = ModelWrapper(model)
+            
+            torch.onnx.export(
+                wrapped_model,
+                dummy_input,
+                args.onnx_path,
+                export_params=True,
+                opset_version=11,
+                do_constant_folding=True,
+                input_names=['input'],
+                output_names=['output'],
+                dynamic_axes={
+                    'input': {0: 'batch_size', 2: 'height', 3: 'width'},
+                    'output': {0: 'batch_size', 2: 'height', 3: 'width'}
+                }
+            )
+        else:
+            # For models that use regular forward method
+            torch.onnx.export(
+                model,
+                dummy_input,
+                args.onnx_path,
+                export_params=True,
+                opset_version=11,
+                do_constant_folding=True,
+                input_names=['input'],
+                output_names=['output'],
+                dynamic_axes={
+                    'input': {0: 'batch_size', 2: 'height', 3: 'width'},
+                    'output': {0: 'batch_size', 2: 'height', 3: 'width'}
+                }
+            )
+        print(f"Model successfully exported to {args.onnx_path}")
+        
+        # Verify the ONNX model
+        try:
+            import onnx
+            onnx_model = onnx.load(args.onnx_path)
+            onnx.checker.check_model(onnx_model)
+            print("ONNX model verification passed")
+        except ImportError:
+            print("ONNX not installed, skipping model verification")
+        except Exception as e:
+            print(f"ONNX model verification failed: {e}")
+            
+    except Exception as e:
+        print(f"Failed to export model to ONNX: {e}")
+        return False
+    
+    return True
 
 def net_process(args, model, image, mean, std=None, flip=False):
     input = torch.from_numpy(image.transpose((2, 0, 1))).float()
@@ -187,7 +269,7 @@ if __name__ == '__main__':
     std = [0.229, 0.224, 0.225]
     std = [item * value_scale for item in std]
     val_transform = transform.Compose ( [transform.ToTensor ()])
-    val_dataset = dataset.SemData ( split='val', data_root=args.dataset_path, data_list='val.txt',
+    val_dataset = dataset.SingleLabelData ( split='val', data_root=args.dataset_path, data_list='val.txt',
                                     transform=val_transform, path='SegmentationClassAug' )
     val_loader = data.DataLoader ( val_dataset, num_workers=args.workers,
                                 batch_size=1, shuffle=False, pin_memory=True )
@@ -196,13 +278,22 @@ if __name__ == '__main__':
     if model_type == 'res50_cam':
         model = res50_ASPP_MLP.Res_DeeplabMLP(args.numclasses,args.layers)
     elif model_type == 'res50_lorm':
-        model = res50_ASPP_lorm.Res_Deeplab(args.numclasses,args.layers)
-    elif args.model_type == 'res50_deeplabv3_lorm':
+        model = res50_ASPP_lorm.Res_Deeplab(args.numclasses,args.layers)    # <- pretrained
+    elif model_type == 'res50_deeplabv3_lorm':
         model = res50_deeplabV3_lorm.Res_Deeplab(args.numclasses,args.layers)
     model_pretrain = torch.load ( args.checkpoint_path )
     # model = func.param_restore_all ( model, model_pretrain['state_dict'] )
     model.load_state_dict(model_pretrain['state_dict'])
     model = model.cuda ()
+
+    # Export to ONNX if requested
+    if args.export_onnx:
+        success = export_to_onnx(model, args)
+        if success:
+            print(f"ONNX export completed successfully: {args.onnx_path}")
+        else:
+            print("ONNX export failed")
+        exit()  # Exit after export, don't run evaluation
 
     test(args, val_loader, model, args.numclasses, mean, std, 512, 465, 465, [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0])
 

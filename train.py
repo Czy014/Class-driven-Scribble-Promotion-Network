@@ -179,6 +179,8 @@ class Trainer():
                     pred_seg = self.model(img_v)
                 elif args.model_type == 'deeplabv3p_lorm':
                     pred_seg,lorm_loss = self.model(img_v,label_scribble_v,label_pesudo_v)
+                elif args.model_type == 'res50_ASPP_lorm':
+                    pred_seg,lorm_loss = self.model(img_v,label_scribble_v,label_pesudo_v)
                 else:
                     pred_seg,_ = self.model(img_v)# pred_class: (2,20) pred_seg: 8,21,59,59                    
                 pred_sg_up = F.interpolate(pred_seg, size=input_size, mode='bilinear', align_corners=True)
@@ -194,13 +196,13 @@ class Trainer():
                         print('label_pesudo_v',path_name,torch.unique(label_pesudo_v[label_pesudo_v.ne(255)]))
                     if local_rank == 0:
                         writer.add_scalar('train/pesudolabel_loss',float(loss_pesudolabel),epoch*len(tbar)+i)
-                    loss = loss + args.l_segc* loss_pesudolabel
+                    loss = loss + args.l_segs* loss_pesudolabel
                 elif args.label_smooth == -1: # use distance to soft the CAM label. Abandoned. do not activate this.
                     label_pesudo_v[label_pesudo_v==255] = 0
                     loss_pesudolabel = self.pesudolabel_entropy(pred_sg_up,label_pesudo_v,distancemap_s_v)
                     if local_rank == 0:
                         writer.add_scalar('train/pesudolabel_loss',float(loss_pesudolabel),epoch*len(tbar)+i)
-                    loss = loss + args.l_segc*loss_pesudolabel
+                    loss = loss + args.l_segs*loss_pesudolabel
                     
                 if args.l_ds > 0:
                     loss_l_ds =  self.distanceMap_entropy_loss(pred_sg_up,distancemap_s_v)
@@ -263,6 +265,8 @@ class Trainer():
                     pred_seg = self.model.forward_eval(img_v)
                 elif args.model_type == 'deeplabv2':
                     pred_seg = self.model.forward(img_v)
+                elif args.model_type == 'res50_ASPP_lorm':
+                    pred_seg = self.model.forward_eval(img_v)
                 else:
                     pred_seg,_= self.model.forward(img_v)
                 if args.distributed:
@@ -291,9 +295,15 @@ class Trainer():
                 if i == 0 and local_rank == 0:
                     colormap = func.vocpallete
                     cp=torch.from_numpy(np.array(colormap)).reshape((-1,3)).float()
-                    pred_seg=cp[pred_sg_up_label,:].squeeze().permute(0,3,1,2)
+                    pred_seg = cp[pred_sg_up_label, :].squeeze()
+                    if pred_seg.dim() == 3:
+                        pred_seg = pred_seg.unsqueeze(0)  # [H, W, 3] → [1, H, W, 3]
+                    pred_seg = pred_seg.permute(0, 3, 1, 2)
                     pred_seg = pred_seg[0:batch_size] # because we have gathered from dist, so we just need to pick the former batchsize ones.
-                    label=cp[label_scribble_v.cpu(),:].squeeze().permute(0,3,1,2)
+                    label=cp[label_scribble_v.cpu(),:].squeeze()
+                    if label.dim() == 3:
+                        label = label.unsqueeze(0)  # [H, W, 3] → [1, H, W, 3]
+                    label = label.permute(0, 3, 1, 2)
                     label = label[0:batch_size]
                     img_vis = img_v[0:batch_size].cpu().clone() ########### this for debug
                     value_scale = 255
