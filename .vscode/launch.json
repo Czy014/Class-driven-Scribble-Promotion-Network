@@ -13,8 +13,8 @@
                 "--dataset_path", "dataset/ScribbleSup/VOC2012",
                 "--dataset", "ScribblePseudoDsDc",
                 "--train_path", "pascal_2012_scribble",
-                "--distancemap_s", "distance_map",
-                "--distancemap_c", "distance_pseudo",
+                "--distancemap_s", "distance_pseudo/distance_map_lambd_e",
+                "--distancemap_c", "distance_pseudo/distance_CAM_lambd_e6",
                 "--pesudo_path", "bmp_pseudolabel",
                 "--l_seg", "1",
                 "--l_pesudo", "1",
@@ -25,14 +25,17 @@
                 // "--labelFusion_entropy", "0",
                 "--numclasses", "21",
                 "--workers", "6",
-                "--batchsize", "2",
+                "--batchsize", "16",
                 "--lr", "1e-3",
                 "--warmup", "5",
                 "--wdecay", "5e-4",
                 "--momentum", "0.9",
                 "--epochs", "50",
-                "--logdir", "./log/train_r50_deeplabv2"
-            ]
+                "--logdir", "./log/res50_ASPP_lorm"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "6",
+            },
         },
         {
             "name": "evaluate",
