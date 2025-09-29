@@ -2,7 +2,7 @@ absl-py==1.4.0
 asttokens==2.2.1
 backcall==0.2.0
 cachetools==5.3.0
-certifi @ file:///croot/certifi_1725551672989/work/certifi
+# certifi @ file:///croot/certifi_1725551672989/work/certifi
 charset-normalizer==3.1.0
 contourpy==1.0.7
 cycler==0.11.0
@@ -46,7 +46,7 @@ nvidia-nccl-cu12==2.18.1
 nvidia-nvjitlink-cu12==12.9.86
 nvidia-nvtx-cu12==12.1.105
 oauthlib==3.2.2
-onnx @ file:///croot/onnx_1722521175072/work
+# onnx @ file:///croot/onnx_1722521175072/work
 opencv-python==4.7.0.72
 packaging==23.1
 parso==0.8.3
