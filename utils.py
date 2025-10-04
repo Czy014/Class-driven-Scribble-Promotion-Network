@@ -8,19 +8,23 @@ import dataset
 import transform as transform
 import transform_exten
 
-def get_model(model_type,distributed,args,local_rank,device):
+def get_model(model_type, distributed, args):
     model = None
     if model_type == 'deeplabv3p':
-        model = deeplabV3p.Res_Deeplab(args.numclasses,args.layers)
+        model = deeplabV3p.Res_Deeplab(args.numclasses, args.layers)
     elif model_type == 'deeplabv2':
-        model = deeplabV2.Res_Deeplab(args.numclasses,args.layers)
+        model = deeplabV2.Res_Deeplab(args.numclasses, args.layers)
     elif model_type == 'deeplabv3p_lorm':
-        model = deeplabV3_lorm.Res_Deeplab(args.numclasses,args.layers)
+        model = deeplabV3_lorm.Res_Deeplab(args.numclasses, args.layers)
     elif model_type == 'res50_ASPP_lorm':
         model = res50_ASPP_lorm.Res_Deeplab(args.numclasses, args.layers)
-    model = model.to(device)
+    
+    # Move model to correct device
     if distributed:
-        model = DistributedDataParallel(model,device_ids=[local_rank])
+        model = model.to(args.local_rank)
+        model = DistributedDataParallel(model, device_ids=[args.local_rank])
+    else:
+        model = model.to(args.device)
     
     return model
 

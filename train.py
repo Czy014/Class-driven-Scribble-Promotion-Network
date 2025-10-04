@@ -62,9 +62,11 @@ parser.add_argument('--wdecay', default=5e-4, type=float, metavar='WEIGHT_DECAY'
 parser.add_argument('--momentum', default=0.9, type=float, metavar='MOMENTUM', help='the momentum of SGD learning algorithm')
 
 # distributed training
-parser.add_argument('--distributed',default=False,type=bool,help='Use torch.distributed')
-parser.add_argument('--local_rank',default=-1,type=int,help='Node rank for distributed training')
-parser.add_argument('--device',default='cuda',type=str)
+parser.add_argument('--distributed', action='store_true', help='Use torch.distributed')
+parser.add_argument('--local_rank', default=-1, type=int, help='Node rank for distributed training')
+parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')
+parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+parser.add_argument('--device', default='cuda', type=str)
 parser.add_argument('--logdir', default='./log/', type=str,
                         help='path where to save, empty for no saving')
 
@@ -76,6 +78,11 @@ class Trainer():
         self.date = datetime.now().strftime('%b%d_%H-%M-%S')+'_'+socket.gethostname()
         self.best_pred = 0
         
+        # Set device based on distributed training setup
+        if args.distributed:
+            self.device = torch.device('cuda', args.local_rank)
+        else:
+            self.device = torch.device(args.device)
         
         value_scale = 255
         mean = [0.485, 0.456, 0.406]
@@ -83,18 +90,19 @@ class Trainer():
         std = [0.229, 0.224, 0.225]
         std = [item * value_scale for item in std]
 
-        self.train_loader, self.val_loader = get_dataloader(args,args.distributed)
-        self.model = get_model(args.model_type,args.distributed,args,local_rank,device)
+        self.train_loader, self.val_loader = get_dataloader(args, args.distributed)
+        self.model = get_model(args.model_type, args.distributed, args)
         
         # learning rate and optimizer
         self.warmup_epoch = args.warmup_epoch
         self.max_step = args.epochs * len(self.train_loader)
         self.base_lr = args.lr # 1e-3
-        if args.distributed:
-            self.base_lr = world_size*self.base_lr # n * 1e-3 
+        
+        # For distributed training, scale learning rate with world size
+        if hasattr(args, 'world_size') and args.world_size > 1:
+            self.base_lr = args.world_size * self.base_lr # n * 1e-3 
             self.lr = self.base_lr
-            print('Effective lr : ',self.base_lr)
-
+            print('Effective lr : ', self.base_lr)
         else:
             self.lr = args.lr
 
@@ -126,8 +134,19 @@ class Trainer():
     def train(self, epoch):
         scaler = amp.GradScaler()
         self.model.train()
+        
+        # Set epoch for DistributedSampler to ensure proper shuffling
+        if hasattr(self.train_loader.sampler, 'set_epoch'):
+            self.train_loader.sampler.set_epoch(epoch)
+        
         losses = func.AverageMeter()
-        tbar = tqdm(self.train_loader,position=local_rank,ncols=95)
+        
+        # Only show progress bar on main process for distributed training
+        if args.distributed and dist.get_rank() != 0:
+            tbar = self.train_loader
+        else:
+            tbar = tqdm(self.train_loader, ncols=95)
+        
         for i, batch in enumerate(tbar):
             # cur_lr = self.scheduler.get_last_lr()[0]
             # if i >50:
@@ -136,32 +155,28 @@ class Trainer():
             cur_lr = self.lr
             if args.dataset == 'ScribbleOnly': # only scribbles are used
                 img, label_scribble, path_name = batch
-                img_v = img.to(device)
-                label_scribble_v = label_scribble.to(device)
-                batch_size = img.size()[0]
+                img_v = img.to(self.device)
+                label_scribble_v = label_scribble.to(self.device)
                 input_size = img.size()[2:4]
             elif args.dataset == 'PseudoOnly': # 
                 img,label_scribble,label_pesudo,path_name = batch
-                img_v = img.to(device)
-                label_scribble_v = label_scribble.to(device)
-                label_pesudo_v = label_pesudo.to(device)
-                batch_size = img.size()[0]
+                img_v = img.to(self.device)
+                label_scribble_v = label_scribble.to(self.device)
+                label_pesudo_v = label_pesudo.to(self.device)
                 input_size = img.size()[2:4]
             elif args.dataset == 'ScribblePseudo':
                 img,label_scribble,label_pesudo,path_name = batch
-                img_v = img.to(device)
-                label_scribble_v = label_scribble.to(device)
-                label_pesudo_v = label_pesudo.to(device)
-                batch_size = img.size()[0]
+                img_v = img.to(self.device)
+                label_scribble_v = label_scribble.to(self.device)
+                label_pesudo_v = label_pesudo.to(self.device)
                 input_size = img.size()[2:4]
             elif args.dataset == 'ScribblePseudoDsDc':
                 img,label_scribble,label_pesudo,distancemap_s,distancemap_c,path_name = batch
-                img_v = img.to(device,non_blocking=True)
-                label_scribble_v = label_scribble.to(device,non_blocking=True)
-                label_pesudo_v = label_pesudo.to(device,non_blocking=True) # b,h,w
-                distancemap_s_v = distancemap_s.to(device,non_blocking=True) # b,h,w
-                distancemap_c_v = distancemap_c.to(device,non_blocking=True) # b,h,w
-                batch_size = img.size()[0]
+                img_v = img.to(self.device,non_blocking=True)
+                label_scribble_v = label_scribble.to(self.device,non_blocking=True)
+                label_pesudo_v = label_pesudo.to(self.device,non_blocking=True) # b,h,w
+                distancemap_s_v = distancemap_s.to(self.device,non_blocking=True) # b,h,w
+                distancemap_c_v = distancemap_c.to(self.device,non_blocking=True) # b,h,w
                 input_size = img.size()[2:4]
             elif args.dataset == 'scribble_pseudo_dsmp':
                 img,label_scribble,label_pesudo,distancemap_s,path_name = batch
@@ -235,27 +250,33 @@ class Trainer():
 
 
         # self.scheduler.step()
-        if args.local_rank == 0:
-            writer.add_scalar('train/epoch_loss',losses.avg,epoch)
+        if not args.distributed or dist.get_rank() == 0:
+            if 'writer' in globals():
+                writer.add_scalar('train/epoch_loss',losses.avg,epoch)
 
 
     def validate_tnt(self, epoch):
         confusion_meter = tnt.meter.ConfusionMeter(self.args.numclasses, normalized=False)
         losses = func.AverageMeter()
-        tbar = tqdm(self.val_loader,position=local_rank,total=len(self.val_loader),ncols=90)
+        
+        # Only show progress bar on main process for distributed training  
+        if args.distributed and dist.get_rank() != 0:
+            tbar = self.val_loader
+        else:
+            tbar = tqdm(self.val_loader, total=len(self.val_loader), ncols=90)
+        
         self.model.eval()
-        acc = 0
         with torch.no_grad():
             for i, batch in enumerate(tbar):
                 # if i >50:
                 #     break
                 img, label_scribble,path_name = batch
 
-                batch_size = img.size()[0]
+                batch_size = img.size(0)
                 input_size = img.size()[2:4]
 
-                img_v = img.to(device)
-                label_scribble_v = label_scribble.to(device)
+                img_v = img.to(self.device)
+                label_scribble_v = label_scribble.to(self.device)
 
                 # pred_seg,pred_class = self.model(img_v)
                 # with amp.autocast():
@@ -269,16 +290,6 @@ class Trainer():
                     pred_seg = self.model.forward_eval(img_v)
                 else:
                     pred_seg,_= self.model.forward(img_v)
-                if args.distributed:
-                    batch_img = [torch.zeros_like(img_v) for _ in range(world_size)]
-                    batch_label_scribble = [torch.zeros_like(label_scribble_v) for _ in range(world_size)]
-                    batch_pred_seg = [torch.zeros_like(pred_seg) for _ in range(world_size)]
-                    dist.all_gather(batch_img,img_v)
-                    dist.all_gather(batch_label_scribble,label_scribble_v)
-                    dist.all_gather(batch_pred_seg,pred_seg)
-                    img_v = torch.cat(batch_img,dim=0)
-                    label_scribble_v = torch.cat(batch_label_scribble,dim=0)
-                    pred_seg = torch.cat(batch_pred_seg,dim=0)
 
                 pred_sg_up = F.interpolate(pred_seg, size=input_size, mode='bilinear', align_corners=True)
                 loss = self.criterion_CE(pred_sg_up, label_scribble_v.squeeze(1))
@@ -290,9 +301,14 @@ class Trainer():
                 
                 confusion_meter.add(pred_sg_up_label[valid_pixel], label_scribble_v[valid_pixel])
                 losses.update(loss.item(), img.size(0))
-                tbar.set_description('Valid [{0}] Loss {loss.val:.3f} {loss.avg:.3f} Rank={rank}'.format(epoch, loss=losses,rank=local_rank))
+                
+                # Update progress bar (only on main process)
+                if not args.distributed or dist.get_rank() == 0:
+                    rank_info = f" Rank={dist.get_rank()}" if args.distributed else ""
+                    tbar.set_description(f'Valid [{epoch}] Loss {losses.val:.3f} {losses.avg:.3f}{rank_info}')
+                    
                 # for tensorboard
-                if i == 0 and local_rank == 0:
+                if i == 0 and (not args.distributed or dist.get_rank() == 0):
                     colormap = func.vocpallete
                     cp=torch.from_numpy(np.array(colormap)).reshape((-1,3)).float()
                     pred_seg = cp[pred_sg_up_label, :].squeeze()
@@ -325,12 +341,15 @@ class Trainer():
         mean_iou_ind = inter/union
         mean_iou_all = mean_iou_ind.mean()
         mean_acc_pix = float(inter.sum())/float(confusion_matrix.sum())
-        if local_rank == 0:
+        
+        # Only print and log on main process
+        if not args.distributed or dist.get_rank() == 0:
             print(' * IOU_All {iou}'.format(iou=mean_iou_all)) # IOU ALL是平均IOU
             print(' * IOU_Ind {iou}'.format(iou=mean_iou_ind)) # IOU Ind是21个class的IoU
             print(' * ACC_Pix {acc}'.format(acc=mean_acc_pix))
-            writer.add_scalar('val/val_loss',losses.avg,epoch)
-            writer.add_scalar('val/val_iou',mean_iou_all,epoch)
+            if 'writer' in globals():
+                writer.add_scalar('val/val_loss',losses.avg,epoch)
+                writer.add_scalar('val/val_iou',mean_iou_all,epoch)
 
         return mean_iou_all, mean_iou_ind, mean_acc_pix
     
@@ -361,22 +380,46 @@ if __name__ == '__main__':
     #cudnn.enabled = True
     cudnn.benchmark = True
     cudnn.deterministic = False
-    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
-    # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
-    device = torch.device(args.device)
+    
+    # Initialize distributed training
     local_rank = 0
     world_size = 1
+    
     if args.distributed:
-        dist.init_process_group(backend='nccl')
-        local_rank = dist.get_rank()
-        torch.cuda.set_device(local_rank)
-        device = torch.device('cuda', local_rank)
-        world_size = dist.get_world_size()
+        # Initialize the process group
+        if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+            args.rank = int(os.environ["RANK"])
+            args.world_size = int(os.environ['WORLD_SIZE'])
+            args.local_rank = int(os.environ['LOCAL_RANK'])
+        elif 'SLURM_PROCID' in os.environ:
+            args.rank = int(os.environ['SLURM_PROCID'])
+            args.local_rank = args.rank % torch.cuda.device_count()
+        else:
+            print('Not using distributed mode')
+            args.distributed = False
+    
+    if args.distributed:
+        torch.cuda.set_device(args.local_rank)
+        torch.distributed.init_process_group(
+            backend='nccl',
+            init_method=args.dist_url,
+            world_size=args.world_size,
+            rank=args.rank
+        )
+        local_rank = args.rank
+        world_size = args.world_size
+        device = torch.device('cuda', args.local_rank)
+        torch.distributed.barrier()
+    else:
+        device = torch.device(args.device)
+        local_rank = 0
+        world_size = 1
 
     trainer = Trainer(args)
-    # trainer.validate_tnt(0)
-    if local_rank == 0:
+    
+    # Initialize TensorBoard writer and logging (only on main process)
+    writer = None
+    if not args.distributed or dist.get_rank() == 0:
         writer = SummaryWriter(os.path.join(args.logdir,trainer.date))
         log_path = os.path.join(args.logdir,trainer.date,'log.txt')
         f = open(log_path,'a')
@@ -394,21 +437,16 @@ if __name__ == '__main__':
         if epoch >= args.val_epoch:
             iou_all, iou_ind, acc_pix = trainer.validate_tnt(epoch)
 
+        t2 = time()
         # save checkpoint
         is_best = (iou_all >= trainer.best_pred)
         trainer.best_pred = iou_all if is_best else trainer.best_pred
-        # if local_rank == 0:
-        #     func.save_checkpoint({
-        #         'epoch': epoch,
-        #         'state_dict': trainer.model.state_dict(),
-        #         'best_pred': (iou_all, iou_ind, acc_pix, acc_class),
-        #         'optimizer': trainer.optimizer.state_dict(),
-        #     }, os.path.join(args.logdir,trainer.date), is_best)
-        t2 = time()
-        if local_rank == 0:
+        
+        # Only save checkpoint on main process
+        if not args.distributed or dist.get_rank() == 0:
             state = {
                 'epoch': epoch,
-                'state_dict': trainer.model.state_dict(),
+                'state_dict': trainer.model.module.state_dict() if args.distributed else trainer.model.state_dict(),
                 'best_pred': (iou_all, iou_ind, acc_pix),
                 'optimizer': trainer.optimizer.state_dict(),
             }
@@ -426,5 +464,5 @@ if __name__ == '__main__':
             f.writelines(log_context)
             f.close()
 
-    if local_rank == 0:
+    if writer is not None:
         writer.close()

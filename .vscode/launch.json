@@ -75,5 +75,40 @@
                 "--onnx_path", "model_res50_lorm.onnx"
             ]
         },
+        {
+            "name": "debug_ddp_training",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--distributed",
+                "--layers", "50",
+                "--model_type", "res50_ASPP_lorm",
+                "--dataset_path", "dataset/ScribbleSup/VOC2012",
+                "--dataset", "ScribblePseudoDsDc",
+                "--train_path", "pascal_2012_scribble",
+                "--distancemap_s", "distance_map",
+                "--distancemap_c", "distance_pseudo",
+                "--l_segs", "1",
+                "--l_pesudo", "1",
+                "--l_lorm", "1",
+                "--l_ds", "1",
+                "--l_dc", "1",
+                "--numclasses", "21",
+                "--workers", "2",
+                "--batchsize", "4",
+                "--lr", "1e-3",
+                "--epochs", "2",
+                "--logdir", "./log/debug_ddp_train"
+            ],
+            "env": {
+                "RANK": "0",
+                "WORLD_SIZE": "1", 
+                "LOCAL_RANK": "0",
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "12355"
+            }
+        }
     ]
 }
